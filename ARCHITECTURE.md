@@ -12,6 +12,72 @@ Internal package boundaries enforce the same separation that microservices achie
 
 ---
 
+## Three-Mode Architecture
+
+The same binary, same data model, and same AI pipeline serve three completely different deployment profiles. No code branching — the mode is determined by which data sources are configured.
+
+```
+MODE 1 — Full Standalone
+─────────────────────────────────────────────────────────────
+  Browser → KaryoSpace
+              │
+              ├─ Native SMTP/IMAP   (email_messages collection)
+              ├─ Native Messaging   (msg_messages collection)
+              ├─ Native Incidents   (inc_incidents collection)
+              ├─ Native KB          (knowledge_chunks collection)
+              └─ ... 15 modules, all data owned by the org
+              │
+              └─ AI queries all of the above
+
+  Result: complete org data sovereignty. No SaaS dependencies.
+          Works air-gapped. One VM. One binary. One restart to upgrade.
+
+
+MODE 2 — AI Layer on Existing Tools
+─────────────────────────────────────────────────────────────
+  Existing Tools (Gmail, Jira, Confluence, ServiceNow, Slack)
+              │
+              │  REST adapters or MCP client connections
+              ▼
+  DataSource SyncWorker (15-min poll)
+              │
+              ▼  VectorizeDocument()
+  rag_integration_chunks  ←──── indexed, embedded, searchable
+              │
+              └─ AI queries integration chunks + any native data
+
+  Also:
+  Claude Desktop / Cursor / GPT
+              │  MCP protocol
+              ▼
+  KaryoSpace MCP Server
+              │  internal calls
+              └─ same rag_integration_chunks + native collections
+
+  Result: 5-minute setup. No migration. Existing tools stay.
+          AI gets org-wide context immediately.
+
+
+MODE 3 — Gradual Migration
+─────────────────────────────────────────────────────────────
+  Start: Mode 2 (all data synced from existing tools)
+              │
+              │  Replace tools one by one
+              ▼
+  Hybrid: some data from native modules, some from integrations
+              │
+              │  Eventually retire all integrations
+              ▼
+  End: Mode 1 (all data native, no SaaS dependencies)
+
+  Result: zero-risk migration. Data is already in KaryoSpace
+          before the cutover. Rollback is reconnecting the integration.
+```
+
+**What makes this possible architecturally:** The `DataSource` interface is transport-agnostic. Native modules and integration adapters both write to the same MongoDB collections via the same vectorization pipeline. The AI query layer queries those collections regardless of how the data arrived. The mode is an operational configuration, not an architectural branch.
+
+---
+
 ## Full System Map
 
 ```

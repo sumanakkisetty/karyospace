@@ -24,13 +24,38 @@ KaryoSpace solves this at the data layer: email, messaging, tasks, incidents, ca
 
 ## Three Product Modes
 
-| Mode | Who It's For | Entry Point |
-|------|-------------|-------------|
-| **Mode 1 — Full Standalone** | Orgs ready to own their stack. Privacy-first. Complete data sovereignty. | Native SMTP/IMAP + 15 built-in modules. No external SaaS dependencies. |
-| **Mode 2 — AI Layer** | Orgs keeping Gmail, Jira, Confluence, ServiceNow. Want unified AI. | Connect existing tools via REST or MCP. Point Claude Desktop at the MCP server. Instant org intelligence without migrating a single tool. |
-| **Mode 3 — Gradual Migration** | Orgs starting with integrations, replacing tools over time. | Begin in Mode 2. Retire tools one by one. Land in Mode 1 at your own pace. |
+The biggest strategic decision in the product: "replace all your SaaS tools" is too high a bar to clear for an initial sale. The same platform serves three completely different buyer profiles without any code branching — same binary, same data model, different entry point.
 
-The Mode 2 wedge in one sentence: **"Connect your Gmail and Jira in 5 minutes. Ask your AI anything about your org. Replace tools when you're ready."**
+### Mode 1 — Full Standalone
+**For orgs ready to own their stack. Privacy-first. Complete data sovereignty.**
+
+Native SMTP/IMAP + 15 built-in modules. No external SaaS dependencies. A company can run its entire operation — email, chat, tasks, incidents, docs — on a single self-hosted VM.
+
+The unlock: air-gapped deployments, data residency requirements, companies that have been burned by SaaS vendor price hikes or lock-in.
+
+### Mode 2 — AI Layer on Existing Tools
+**For orgs keeping Gmail, Jira, Confluence, ServiceNow — but wanting unified AI.**
+
+Connect existing tools via REST adapters or MCP. KaryoSpace vectorizes all incoming data and makes it available to a unified AI. No tool migration required.
+
+The wedge: **"Connect your Gmail and Jira in 5 minutes. Ask your AI anything about your org. Replace tools when you're ready."**
+
+The MCP wedge: **"Point Claude Desktop at KaryoSpace. It instantly knows your email, Jira tickets, Confluence pages, and incidents — without migrating a single tool."**
+
+This is a 5-minute sale, not a 6-month procurement cycle. KaryoSpace becomes AI infrastructure, not a UI competitor. It doesn't need to win the UI battle against Slack or Jira — it becomes the data layer that makes those tools useful to AI.
+
+### Mode 3 — Gradual Migration
+**For orgs that start in Mode 2 and replace tools at their own pace.**
+
+Because KaryoSpace was already syncing all the data in Mode 2, migration is a cutover — not a data migration project. Retire one SaaS tool at a time. Eventually land in Mode 1.
+
+---
+
+| Mode | Entry | Data Source | AI Coverage |
+|------|-------|-------------|-------------|
+| 1 — Standalone | Native modules only | All data in KaryoSpace | Full org context |
+| 2 — AI Layer | Connect existing tools | Synced from Gmail / Jira / Confluence / ServiceNow / Slack | Full org context, no migration |
+| 3 — Migration | Start in Mode 2 | Hybrid (native + synced, converging to native) | Full org context throughout |
 
 ---
 
