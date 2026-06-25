@@ -304,15 +304,9 @@ The entire compiler, Claude Code environment, Docker runtime, and CI/CD pipeline
 
 ## Billing Infrastructure
 
-Stripe billing is built and wired. Subscription management, webhook handler, per-org plan tracking, and an admin billing page are all in production.
+Stripe billing is built and wired. Subscription management, webhook handler, per-org plan tracking, and an admin billing page are all in production — ready for when beta ends.
 
-Pricing tiers:
-
-| Tier | Price | Features |
-|------|-------|----------|
-| Community | Free | All core modules. Self-hosted. No SLA. |
-| Business | $8–12/user/month | All modules + integrations. SSO. Support SLA. |
-| Enterprise | Custom | ServiceNow, custom integrations, compliance docs, dedicated support. |
+**Currently in beta: free and open to all.** See [karyospace.com/info#pricing](https://karyospace.com/info#pricing) for current access details.
 
 ---
 
