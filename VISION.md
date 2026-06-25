@@ -240,6 +240,108 @@ Industries: Insurance, Banking, Healthcare, Manufacturing, Logistics.
 
 ---
 
+## AIO: AI Observability Engine
+
+Every LLM interaction is instrumented. Every query produces a complete trace record stored in `aio_traces`. Nothing goes unmonitored.
+
+The design principle: observability is not a dashboard bolted on after the fact — it's a first-class pipeline step. The `Tracer` object is created at the start of every query and passed through the full pipeline, accumulating measurements at each step before being finalized and persisted asynchronously.
+
+### What gets traced per query
+
+Each `AITrace` record captures the full story of one query:
+
+**Pipeline step timing (milliseconds)**
+- `classify_ms` — time to classify intent (RAG, email, general, statement)
+- `cache_ms` — time to query the semantic cache
+- `retrieve_ms` — time for all 7 parallel RAG searches combined
+- `llm_ms` — time for the LLM to respond
+- `total_ms` — wall clock for the full pipeline
+
+**Retrieval quality**
+- Per-source stats: `{source, count, max_sim, avg_sim}` for each of the 7 sources searched
+- `total_chunks` — total retrieved chunks across all sources
+- `top_sim` — highest cosine similarity score found
+- `cache_hit` + `cache_sim` — whether and how confidently the cache answered
+
+**Token usage and cost**
+- `prompt_tokens`, `completion_tokens` (estimated from character count when exact counts unavailable)
+- `est_cost_usd` — estimated at Groq pricing ($0.59/M input, $0.79/M output). Local Ollama queries cost $0 — this shows directly in the economics dashboard
+
+**User feedback**
+- `user_rating` — thumbs up (+1) or thumbs down (−1) stored per trace. Closes the loop from user signal back to trace record
+
+### Anomaly flags and quality scoring
+
+Eight flags, computed automatically at `Finalize()`:
+
+| Flag | Condition | Quality Impact |
+|------|-----------|---------------|
+| `empty_retrieval_answered` | RAG query, zero chunks found, LLM responded anyway | −35 |
+| `no_sources` | RAG query returned zero source categories | −20 |
+| `low_similarity` | Best cosine similarity < 0.35 | −15 |
+| `slow_llm` | LLM step > 10 seconds | −10 |
+| `slow_total` | Full pipeline > 20 seconds | −10 |
+| `high_cost` | Estimated cost > $0.05 per query | −5 |
+| `cache_hit` | Served from semantic cache (informational) | — |
+| `statement_only` | Input was a statement, no LLM needed (informational) | — |
+
+Quality score starts at 100 and deductions accumulate. Score floor is 0. A query that retrieved nothing and the LLM answered blind lands at 45 or lower — immediately visible in the admin dashboard.
+
+### Admin observability dashboard
+
+`/admin` → Observability tab:
+
+- **24-hour health summary:** total traces, average latency, average quality score, flagged count, cache hit rate, flag breakdown by type
+- **Trace table:** recent queries, filterable to flagged-only, sortable, with expandable source stats and chunk detail
+- **Flag breakdown:** count per flag type across the time window — shows at a glance whether the system is retrieving well or answering blind
+
+All traces carry a 30-day TTL index — auto-deleted after 30 days. Storage scales with usage, not time.
+
+### Why AIO matters for enterprise sales
+
+Regulated industries (healthcare, finance, legal) require auditability before AI gets past compliance. AIO answers: "What did the AI use to answer that question, and why did it score the way it did?" That's not a nice-to-have — it's a procurement gate.
+
+---
+
+## Visitor Analytics — Self-Hosted, Zero Third Parties
+
+The public-facing pages at karyospace.com track visitors with zero reliance on Google Analytics, Cloudflare, or any external service. All data stays in MongoDB. All processing runs in Go on the same server.
+
+**Why self-hosted analytics:** Product dogfooding. If KaryoSpace is making the case for data sovereignty, it should practice it. The analytics stack is also a demonstration of what the platform can do — build complex data pipelines without external dependencies.
+
+### What gets collected
+
+Every page load on `/info`, `/story`, `/docs`, and `/help` calls `GET /api/visit?page=<key>`. The handler:
+
+1. Validates the page key against a whitelist (4 allowed values)
+2. Rejects bots via 50-signal UA pattern matching (curl, Googlebot, Slackbot, headless browsers, and more)
+3. Enriches with GeoIP via **MaxMind GeoLite2** (bundled on-server, ~55MB — no external API call)
+4. Stores the event and returns `{"count": N}` — unique visitor count for that page
+
+Each event records:
+- Page, timestamp (UTC), `ip_hash` (SHA-256 truncated to 8 chars — GDPR-safe, never raw IP)
+- Session ID (30-minute rolling cookie, HttpOnly + Secure)
+- Country, region, city, lat/lon (for heatmap clustering)
+- Device type (desktop/mobile/tablet), browser, OS, referrer hostname
+
+### Admin analytics dashboard
+
+`/admin/analytics` — admin-only, no external CDN dependencies:
+
+- **KPIs:** unique visitors, total page views, sessions, top country, top device, top browser — per selected date range
+- **Daily trend:** unique visitors per day (double-`$group` aggregation: first by `{date + ip_hash}`, then by date — accurate deduplication)
+- **Breakdowns:** by country, device, browser, OS — percentages computed against full result set, not just top-10
+- **World heatmap:** Leaflet.js rendered entirely from local GeoJSON (`/assets/world.geojson`, 252KB Natural Earth 110m). Pulsing dot markers, size and opacity scaled by visit count, dual staggered rings animate outward. Zero external tile server. Zero CDN.
+- **Raw event table:** paginated, sortable, 100 rows per page
+
+Country filter scoped to current date range — changes as the range changes.
+
+### Unique visitor counter on public pages
+
+Each of the 4 public pages displays a live visitor count, pulled from the same `/api/visit` endpoint on every page load. The count is deduplicated by `ip_hash` — it's unique visitors, not page views. This is visible social proof that requires zero third-party JavaScript.
+
+---
+
 ## How This Was Built
 
 One person. No team. No funding. Phone browser as the primary client.
