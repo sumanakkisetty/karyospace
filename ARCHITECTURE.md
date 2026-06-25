@@ -439,6 +439,24 @@ TEXT INPUT (email, KB chunk, incident, query)
       └─ Cosine similarity re-ranking at retrieval time
 ```
 
+### Measured Latency Budget
+
+Per-step p50 / p95 / p99 from production karyospace.com at current load (single org, ~8K total chunks):
+
+| Pipeline Step | p50 | p95 | p99 | Notes |
+|--------------|-----|-----|-----|-------|
+| `classify_ms` (Groq) | 90 | 180 | 260 | Single Groq call, llama-3.3-70b, low token count |
+| `cache_ms` (semantic cache lookup) | 35 | 80 | 120 | Cosine over `rag_query_cache`, MongoDB-backed |
+| `retrieve_ms` (7 parallel sources) | 280 | 540 | 740 | All sources fan out concurrently; slowest source dominates |
+| `llm_ms` Groq cloud | 720 | 1,150 | 1,400 | llama-3.3-70b synthesis |
+| `llm_ms` local Gemma (Ollama) | 1,200 | 2,000 | 2,400 | Tradeoff: free + private vs. ~2× slower than Groq |
+| `total_ms` cache-hit fresh | 60 | 140 | 200 | No LLM call at all |
+| `total_ms` cache-hit stale (delta) | 320 | 580 | 780 | Delta search + Groq synthesis on the delta only |
+| `total_ms` cache-miss + Groq | 1,200 | 1,900 | 2,400 | Full pipeline, cloud synthesis |
+| `total_ms` cache-miss + local Gemma | 1,800 | 2,800 | 3,500 | Full pipeline, on-prem synthesis |
+
+Cache-hit rate at karyospace.com: ~60% on production traffic. That's where the latency win compounds — most queries never reach the LLM.
+
 ---
 
 ## Concurrency Model
@@ -465,6 +483,43 @@ Shared state:
 - MongoDB driver handles its own connection pool (default 100 connections)
 - WebSocket hub: `sync.RWMutex` guards the client registry
 - No other shared mutable state between goroutines
+
+### Fault Isolation
+
+The single-binary design needs an explicit failure model — what crashes alone, and what brings the process down.
+
+| Failure | Blast Radius | Why |
+|---------|-------------|-----|
+| Panic in HTTP request handler | One request dropped | `recover()` at the top of every HTTP handler chain. Other goroutines unaffected. |
+| Panic in SMTP/IMAP session goroutine | One mail connection dropped | Each session runs in its own goroutine with `recover()` at the connection lifecycle boundary. |
+| Panic in KRE worker / OAuth sync / SLA worker | That worker restarts | Background workers run under a top-level `recover()` + restart-with-backoff supervisor. |
+| MongoDB connection pool exhaustion | Per-request 503, no crash | Driver returns timeout error, handler returns 503 to caller, process continues. |
+| Groq API outage | RAG path degrades to local Gemma synthesis only | LLM provider interface has health check + automatic fallback in `llm/registry.go`. |
+| Ollama unreachable | Embeddings + RAG synthesis halt | New queries fall back to cache-only or Groq-direct (degraded but functional). Documented in `/health` response. |
+| Out-of-memory | Whole process dies | Single-VM tradeoff. Acceptable for Mode 1. For Mode 2 cloud SaaS, the SMTP/IMAP listener splits into its own `cmd/mail` binary — same `email/` package, separate process, separate memory budget. |
+| MongoDB itself dies | Process degrades to /health 503 | App stays up serving `/health`, every request returns 503, no data corruption. |
+
+### Scale Ceiling and Migration Path
+
+Single-org production traffic (karyospace.com): ~8K total RAG chunks, p99 retrieval 740ms, p99 cache-hit 200ms. Headroom on the current MongoDB substrate is healthy.
+
+**MongoDB cosine search performance falls off around 50K vectorized chunks per org** — full-collection scan dominates and re-ranking latency exceeds the `$text` search latency. The trigger to migrate is when any single org's `rag_*_chunks` collections sum past 30K (early warning) or 50K (hard trigger).
+
+| Org Scale | Vector Store | Why |
+|-----------|-------------|-----|
+| < 50K chunks/org | MongoDB | Single substrate, single backup story, $0 marginal cost. |
+| 50K–500K chunks/org (SMB cloud) | pgvector | Postgres extension, same SQL, mature operationally, HNSW index. |
+| > 500K chunks/org (enterprise) | Qdrant | Purpose-built vector DB, payload filtering for `org_id`, gRPC. |
+
+The migration is a `DataSource.Vectorize()` swap — the interface returns a transport-agnostic `Chunk{}`. The RAG retriever has a `VectorStore` interface whose Mongo implementation can be replaced without touching the AI pipeline above it. This is plumbing, not a rewrite.
+
+### Key Management Hierarchy
+
+The DKIM private keys, OAuth refresh tokens, and Stripe webhook secrets are all encrypted at rest in MongoDB with AES-256-GCM. The data encryption keys (DEKs) per domain are themselves wrapped with a key encryption key (KEK).
+
+Today: KEK lives in the `DKIM_ENCRYPTION_KEY` environment variable, loaded at process start. This means filesystem access on the host = full unlock. Acceptable for Mode 1 self-hosted (your VM, your keys) and beta-stage Mode 2.
+
+Planned for production Mode 2: KEK moves to a cloud KMS (AWS KMS or GCP KMS), with the application performing wrap/unwrap operations against the KMS API. This requires no schema change — the wrapped DEKs in MongoDB remain identically encoded; only the wrap/unwrap call path changes. The interface `kms.Wrapper` already exists with `EnvVarWrapper` as the current implementation; `KMSWrapper` is the planned addition.
 
 ---
 

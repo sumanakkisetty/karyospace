@@ -59,23 +59,46 @@ Because KaryoSpace was already syncing all the data in Mode 2, migration is a cu
 
 ---
 
-## What It Replaces
+## The Product Surface
 
-| KaryoSpace Module | Replaces | Status |
-|------------------|----------|--------|
-| Email (native SMTP/IMAP + OAuth bridge) | Outlook, Gmail | ✅ Production-ready. DKIM, SPF, STARTTLS, MIME. Gmail + Outlook OAuth bridge live. |
-| Messaging (WebSocket + WebRTC) | Slack, Teams | ✅ Production-ready. Channels, DMs, threads, reactions, voice/video calls, screen share. |
-| Incidents | ServiceNow, PagerDuty | ✅ Production-ready. Status machine, SLA worker, dashboard charts, timeline. |
-| Projects / PM | Jira, Linear | ✅ Production-ready. Kanban, sprints, burndown, AI task creation. |
-| Knowledge Base | Confluence, Notion | ✅ Production-ready. RAG-indexed, team-restricted visibility, AI chat per doc. |
-| Notes | Notion personal | ✅ Complete. WYSIWYG, tags, pin, mobile single-panel slide. |
-| Calendar | Google Calendar, Outlook | ✅ Built. Events, recurrence, RSVP, conflict detection. |
-| Notifications | - | ✅ Complete. WebSocket bell, type filters, all event types wired. |
-| Team / Directory | BambooHR, Workday | ✅ Built. Org chart, department filter, quick Email + Chat actions. |
-| Admin | - | ✅ Built. User management, billing, app logs, integration cards. |
-| Global Search | - | ✅ Built. Cmd+K across all modules. |
-| Home / AI Assistant | - | ✅ Built. Unified AI with RAG across all org data. |
-| PWA | - | ✅ Built. Installable. Offline shell. |
+KaryoSpace is one input field — the Home AI command bar — backed by five core modules. Everything else is infrastructure underneath.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Home — natural language input + slash commands              │
+│  ────────────────────────────────────────────────────────    │
+│  > "What are the open P1 incidents blocking the Q3 launch?"  │
+│  > /jira create — bug in checkout flow                       │
+│  > /servicenow raise — VPN outage in EMEA                    │
+└─────────────────────────────────────────────────────────────┘
+                            │
+       ┌────────────────────┼────────────────────┐
+       ▼                    ▼                    ▼
+   ┌────────┐         ┌──────────┐        ┌──────────┐
+   │ Email  │         │ Messaging│        │Incidents │
+   └────────┘         └──────────┘        └──────────┘
+              ┌──────────┐         ┌──────────┐
+              │Knowledge │         │  Notes   │
+              └──────────┘         └──────────┘
+```
+
+The product is the command bar. Everything routes through it.
+
+### What KaryoSpace replaces
+
+In Mode 1 (full standalone) for SMB orgs:
+
+| Module | Replaces | Coverage |
+|--------|----------|----------|
+| Email (native SMTP/IMAP + OAuth bridge) | Outlook, Gmail | ~85% — DKIM, SPF, STARTTLS, MIME, OAuth bridge live |
+| Messaging (WebSocket + WebRTC) | Slack, Teams | ~90% — Channels, DMs, threads, voice/video, screen share |
+| Incidents | ServiceNow, PagerDuty | ~75% (SMB scope — see below for enterprise positioning) |
+| Knowledge Base | Confluence, Notion | ~82% — RAG-indexed, team-restricted visibility, AI chat per doc |
+| Notes | Notion personal | ~100% — WYSIWYG, tags, pin, mobile single-panel slide |
+
+In Mode 2 (AI layer on existing tools), KaryoSpace **augments** rather than replaces. ServiceNow, Jira, Confluence stay live — KaryoSpace makes them queryable from a single AI surface. Mode 1 replacement is for SMB orgs (10-100 employees). Enterprise IT stays on ServiceNow + Jira and uses KaryoSpace as the AI infrastructure layer over them.
+
+**Infrastructure modules** (always running, not in the surface story): Calendar, Notifications, Team Directory, Admin, Global Search, Home/AI, PWA, MCP server, Visitor Analytics, AIO. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system map.
 
 ---
 
@@ -292,9 +315,9 @@ Downloads docker-compose.yml, prompts for domain and admin email, auto-generates
 | Authentication | OIDC/SAML (generic — works with Okta, Auth0, Entra, any OIDC provider). Local auth + TOTP. |
 | OAuth | Google Calendar, Microsoft Outlook, Confluence, Jira. Token refresh handled automatically. |
 | Email authentication | DKIM signing outbound, SPF verification inbound, DMARC at DNS. |
-| Data isolation | org_id enforced at query level on every MongoDB operation. Cross-org queries are architecturally impossible. |
+| Data isolation | `org_id` enforced at query level on every MongoDB operation. CI linter (`mongoctl-lint`) fails the build if any `Find/FindOne/Aggregate` is missing the `org_id` filter — defense in depth against accidental cross-org reads. |
 | Observability | All 5xx errors persisted to `app_logs` (MongoDB capped collection). Prometheus `/metrics` endpoint live. |
-| Security grade | A — all known findings resolved. |
+| Security review | Internal full-codebase review 2026-05-08 — Grade A, zero critical or high findings. **Not third-party.** SOC 2 Type I targeted Q4 2026 once first paying customers fund the audit (Vanta-managed). Beta customers receive a security questionnaire response + DPA, not a SOC 2 letter. |
 
 ---
 
@@ -332,6 +355,29 @@ The entire compiler, Claude Code environment, Docker runtime, and CI/CD pipeline
 Stripe billing is built and wired. Subscription management, webhook handler, per-org plan tracking, and an admin billing page are all in production — ready for when beta ends.
 
 **Currently in beta: free and open to all.** See [karyospace.com/info#pricing](https://karyospace.com/info#pricing) for current access details.
+
+### Beta-to-paid commitment (in writing)
+
+- **All beta orgs:** 12 months free on the lowest paid tier after beta ends. No surprise migration, no forced churn.
+- **First 100 beta orgs ("Founding Members"):** lifetime grandfather at the lowest published price. The people who took the risk get the price for life.
+
+This is contractual, not aspirational. Sign-up confirmation captures Founding Member status.
+
+---
+
+## Production Realities (the honest section)
+
+This section exists because senior buyers ask these questions and deserve direct answers.
+
+**Bus factor: 1.** KaryoSpace is founder-led and solo-built today. The standard customer contract includes (a) source escrow with a 30-day customer-side migration window, and (b) full source access for Founding Members regardless of company status. Source is also published under EL2 on this repo — customers can self-host the codebase at any time.
+
+**Operational maturity.** Single founder + 7 months ≠ enterprise-grade incident response. No 24/7 on-call rotation today. Incident SLA in beta is best-effort with target 4-hour acknowledgement during business hours (ET). Mode 1 self-hosted customers are unaffected by KaryoSpace operational status — their VM, their uptime.
+
+**Scale ceiling, today.** Production karyospace.com runs comfortably at single-org scale (current peak: ~8K total chunks across all RAG collections). MongoDB cosine search is the right substrate up to ~50K chunks per org. Past that, the planned migration is pgvector for SMB / Qdrant for enterprise — the `DataSource.Vectorize()` interface returns a transport-agnostic `Chunk`, the swap is plumbing, not a rewrite.
+
+**Latency, measured.** Full 7-source parallel RAG gather: p50 280ms, p95 540ms, p99 740ms at current load. Cache-hit path: p99 under 200ms. LLM call (Groq llama-3.3-70b) typically adds 700-1400ms; local Gemma synthesis 1.2-2.4s.
+
+**Unit economics, napkin.** At 10K daily active users × 30 AI queries/user/day × 60% cache hit: ~120K un-cached Groq queries/day ≈ $190/day infra. MongoDB Atlas at that scale ≈ $400/mo. Oracle ARM64 paid tier at 4 OCPU × 5 instances ≈ $300/mo. Total ≈ $6,500/mo to serve 10K DAU. At $8/user Business tier with 10% paid conversion: ~$8K revenue. The KRE cache hit rate and local-Gemma routing for org-context queries are the margin levers — not nice-to-haves.
 
 ---
 

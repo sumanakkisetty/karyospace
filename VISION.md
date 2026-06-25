@@ -45,12 +45,14 @@ This is not a separate product mode — it's the natural progression path for Mo
 
 ## Ideal Customer Profile
 
-| Segment | Size | Starting Tools | Entry Point |
-|---------|------|---------------|-------------|
-| SMB | 10–50 | Gmail + Slack + Jira | Connect Gmail + Jira → AI context → replace Slack with native chat |
-| Mid-market | 50–500 | Jira + Confluence + Outlook | Connect all 3 → unified AI search → replace tools gradually |
-| Privacy-first | Any | Any | Full self-hosted. Native email. Complete data sovereignty. |
-| Enterprise IT | 500+ | ServiceNow + Jira + Confluence | ServiceNow CMDB + tickets + Confluence + email → org-wide AI |
+| Segment | Size | Starting Tools | Entry Point | Buyer |
+|---------|------|---------------|-------------|-------|
+| SMB | 10–50 | Gmail + Slack + Jira | Connect Gmail + Jira → AI context → replace Slack with native chat | Founder / Head of Eng |
+| Mid-market | 50–500 | Jira + Confluence + Outlook | Connect all 3 → unified AI search → replace tools gradually | **VP Engineering or CTO** — primary Mode 2 buyer |
+| Privacy-first | Any | Any | Full self-hosted. Native email. Complete data sovereignty. | CIO / CISO at regulated org |
+| Enterprise IT | 500+ | ServiceNow + Jira + Confluence | ServiceNow CMDB + tickets + Confluence + email → org-wide AI (KaryoSpace **augments**, does not replace) | VP IT / Director of Platform Eng |
+
+**The Mode 2 wedge is the security-review demo, not the install.** The buyer has already lived through a Copilot pitch requiring 8 weeks of data warehouse pipeline work. KaryoSpace gives their security team an MCP token and shows results in Claude Desktop in 5 minutes — inside the demo, not after. That's the wedge.
 
 ---
 
@@ -107,6 +109,19 @@ The MCP (Model Context Protocol) decision was the biggest strategic pivot in the
 **As MCP Client:** Instead of writing bespoke REST adapters for every integration, KaryoSpace connects to other tools' MCP servers directly. As vendors (Slack, GitHub, ServiceNow) publish MCP servers, the integration cost approaches zero — no custom API parsing, no schema maintenance.
 
 **Why this changes the company's position:** KaryoSpace becomes AI infrastructure, not a UI competitor. It doesn't need to win the UI battle against Slack or Jira. It becomes the data layer that makes those tools useful to AI.
+
+### MCP Roadmap — Read First, Act Second
+
+V1 (live): 5 read-only tools — `search_workspace`, `list_incidents`, `get_knowledge`, `list_tasks`, `get_email_thread`.
+
+V2 (planned): action tools — `create_incident`, `update_task`, `send_email`, `post_message`. Deliberately *not* shipped in V1.
+
+The reason for the delay: write paths through MCP need an audit story that doesn't exist at the protocol level today. If Claude Desktop creates a P1 incident on Alice's behalf, the audit log must capture intent, actor, authorization scope, and the originating AI client — not just the final MongoDB write. V2 introduces:
+- Per-tool scope tokens (`mcp_actions:incidents.create`) that the user grants explicitly
+- A new `action_trace` type in `aio_traces` capturing the full causal chain
+- A pre-action approval webhook for orgs that want human-in-the-loop on AI-initiated mutations
+
+Shipping action MCP before the audit story is how teams end up writing post-incident reports about an AI agent that deleted production data. We're choosing the slower order.
 
 ---
 
@@ -208,6 +223,33 @@ The planned model is tiered: self-hosted community access, cloud SaaS for teams 
 
 Public showcase source is available under the [Elastic License 2.0](LICENSE) — read, run, and modify freely; may not be offered as a hosted service to third parties.
 
+### Open Core Boundary — what lives where
+
+The license boundary needs to be explicit so customers aren't surprised by what's commercial-only:
+
+**Community (Elastic License 2.0, this repository):**
+- All 15 modules: Email, Messaging, Incidents, PM, Knowledge, Notes, Calendar, Notifications, Team, Admin, Profile, Global Search, Home/AI, PWA, Info
+- Full RAG pipeline (`rag/`), KRE all 3 phases (`kre/`), AIO observability (`aio/`)
+- All LLM providers (`llm/`), MCP server (`cmd/mcp/`), DataSource interface (`integrations/`)
+- Generic OIDC + local auth + TOTP
+- Stripe billing infrastructure
+
+**Commercial-only (separate `karyospace-enterprise` repository, not under EL2):**
+- SAML SSO with advanced attribute mapping
+- ServiceNow read+write integration with workflow execution
+- Compliance audit export (SOC 2 evidence package, HIPAA logs, GDPR DSR automation)
+- SLA dashboard with vendor-grade reporting
+- Multi-region active-active deployment tooling
+- Row-level tenant encryption with customer-managed keys
+
+**Runtime enforcement:** the binary checks a signed license JWT at startup. Without an enterprise license, the gated packages refuse to register their routes. The community binary is the same source — the gate is data, not a different build.
+
+### Beta-to-paid commitment
+
+- All beta orgs grandfather into 12 months free on the lowest paid tier when beta ends
+- First 100 beta orgs are designated **Founding Members** — lifetime grandfather at the lowest published price, forever
+- All grandfathering is captured at signup as a contract term, not a promise
+
 ---
 
 ## Demo Seed CLI
@@ -289,9 +331,26 @@ Quality score starts at 100 and deductions accumulate. Score floor is 0. A query
 
 All traces carry a 30-day TTL index — auto-deleted after 30 days. Storage scales with usage, not time.
 
+### What AIO is — and what it isn't
+
+**What it is:** structural hygiene metrics. Did the retrieval pipeline run mechanically? Did sources come back? Were similarity scores reasonable? Did the LLM take too long? Did it cost too much? Every query produces a complete record of those answers.
+
+**What it isn't:** semantic correctness evaluation. A query that retrieved the wrong document but answered confidently still scores 100 if no flag tripped. We don't claim otherwise. The closed loop for actual correctness is the `user_rating` field — thumbs-up/thumbs-down per trace — which we'll use to build a real eval set once we have ~5K rated traces in production. LLM-as-judge correctness scoring is on the roadmap but not shipping until it's been validated against human ratings, not before.
+
 ### Why AIO matters for enterprise sales
 
 Regulated industries (healthcare, finance, legal) require auditability before AI gets past compliance. AIO answers: "What did the AI use to answer that question, and why did it score the way it did?" That's not a nice-to-have — it's a procurement gate.
+
+### Planned upgrades
+
+| Gap | Today | Planned |
+|-----|-------|---------|
+| Long-term drift analysis | 30-day TTL deletes traces | Daily aggregate summaries persisted indefinitely in `aio_traces_daily` |
+| High-cardinality dimensional queries (slice by user × source × hour) | Mongo aggregations support basic rollups only | Wide-event stream to ClickHouse for arbitrary-dimension slicing; Mongo stays the 30-day hot path |
+| Correctness eval | None | LLM-as-judge prompt validated against the user-rating set, then run on a sampled subset |
+| Closed-loop review | Flagged traces sit in the table | Admin review queue for flagged traces with one-click "mark as actually wrong" → adds to eval set |
+
+We won't ship features for compliance theater. The roadmap above ships when it solves a problem we've measured.
 
 ---
 
@@ -331,6 +390,42 @@ Country filter scoped to current date range — changes as the range changes.
 ### Unique visitor counter on public pages
 
 Each of the 4 public pages displays a live visitor count, pulled from the same `/api/visit` endpoint on every page load. The count is deduplicated by `ip_hash` — it's unique visitors, not page views. This is visible social proof that requires zero third-party JavaScript.
+
+---
+
+## Unit Economics — Napkin Math
+
+Aspirational pricing of $8/user/month on the planned Business tier needs to clear infrastructure cost. The math at three scale points:
+
+| Scale (DAU) | Infra Components | Monthly Cost | Revenue @ 10% paid conversion × $8 | Margin |
+|------------|------------------|-------------|----------------------------------|--------|
+| 1,000 | 1× ARM64 paid Oracle ($60) + MongoDB Atlas M10 ($60) + Groq ($600) | ~$720 | $800 | thin, viable |
+| 10,000 | 5× ARM64 ($300) + Atlas M30 ($400) + Groq ($5,700) | ~$6,500 | $8,000 | ~19% gross margin |
+| 100,000 | Kubernetes on Oracle/AWS ($3K) + Atlas M50+sharding ($3K) + Groq ($45K) | ~$51,000 | $80,000 | ~36% gross margin |
+
+Assumptions: 30 AI queries/user/day, 60% KRE cache hit rate, average 1,800 tokens per un-cached Groq query at $0.59/M input + $0.79/M output, 70% of un-cached queries routed to local Gemma (zero marginal cost) vs Groq.
+
+**The margin levers are not the price tag — they're the cache hit rate and the local-Gemma routing share.** If KRE cache rate drops from 60% to 30%, the 10K-DAU economics flip to negative. KRE is not a feature, it's a unit economics requirement.
+
+---
+
+## Known Limits and Tradeoffs
+
+Senior buyers ask these questions. Pretending the limits don't exist loses the deal in week three; documenting them earns trust in week one.
+
+| Limit | Reality Today | Plan |
+|-------|--------------|------|
+| **Bus factor** | 1 (founder-led, no second admin) | Source escrow in customer contracts. Founding Member source access guaranteed. Hiring begins after Series Seed close. |
+| **SOC 2** | Internal review only, Grade A self-assessed | Vanta-managed SOC 2 Type I targeted Q4 2026 (funded by first paying customers). Type II twelve months after. |
+| **Vector scale ceiling** | ~50K chunks/org in MongoDB | pgvector swap for SMB (50K–500K), Qdrant for enterprise (>500K). `VectorStore` interface ready. |
+| **Action MCP** | Read-only V1 shipped | V2 actions land after the audit story (per-tool scope tokens + `action_trace` in AIO) ships first. |
+| **24/7 on-call** | Founder best-effort, 4-hour business-hours acknowledgement | Pager rotation after first three paying customers. Mode 1 self-hosted customers unaffected — their VM, their uptime. |
+| **AIO correctness eval** | Hygiene metrics only; correctness via `user_rating` thumbs | LLM-as-judge after 5K rated traces validate the judge prompt. Until then, hygiene only. |
+| **Integration write-back** | Read-only for ServiceNow, Jira, Confluence | Write-back behind enterprise tier + customer request, not built speculatively. |
+| **iOS native** | PWA only ("Add to Home Screen") | Flutter build deferred until first 5 paying customers or App Store requirement from a deal. |
+| **Multi-region active-active** | Single-region | Enterprise tier only. Patterns understood, not built. |
+
+The principle: nothing on this list is hidden, nothing is reframed as a "future feature." A limit is a limit until shipped.
 
 ---
 
