@@ -1,8 +1,10 @@
 # KaryoSpace
 
-> **AI-native enterprise workspace. One platform, every tool your company needs, on your own infrastructure.**
+> **Your work, your data, your AI — on one screen.**
 >
 > **[karyospace.com](https://karyospace.com)** — live in production
+>
+> *AI-native enterprise workspace. Self-hosted or cloud. Three deployment modes from one binary.*
 
 [![Live](https://img.shields.io/badge/Live-karyospace.com-6366f1?style=flat-square)](https://karyospace.com)
 [![Dev](https://img.shields.io/badge/Dev-dev.karyospace.com-64748b?style=flat-square)](https://dev.karyospace.com)
@@ -19,6 +21,22 @@
 Enterprise knowledge is fragmented across 10 to 15 disconnected SaaS products that do not talk to each other in any meaningful way. AI layers bolted on top of fragmented data produce fragmented intelligence. Every AI assistant your company buys sees only the slice of data that one vendor decided to expose.
 
 KaryoSpace solves this at the data layer: email, messaging, tasks, incidents, calendar, and documents in a single platform — or connected from existing tools via REST and MCP adapters. The AI is built on top of that unified layer. The result is an AI that actually knows your company because it has access to everything, not just what one vendor decided to expose.
+
+## Why Now
+
+Three things converged between 2025 and 2026 that did not exist before:
+
+1. **Groq, Together, Cerebras** made cloud LLM inference roughly 50× cheaper than the GPT-4 era. This made local-model alternatives (Ollama + Gemma + nomic-embed-text) a viable production substrate for the first time — privacy without paying a 10× quality tax.
+2. **MCP shipped.** "Give the AI access to your org data" went from an 8-week data warehouse pipeline project to a 5-minute Claude Desktop config. The Mode 2 wedge ("connect existing tools in 5 minutes") simply was not buildable before MCP.
+3. **Free ARM64 compute** (Oracle, Hetzner, AWS Graviton spot) made self-hosting accessible to a 50-person company without an infra team. The Mode 1 promise of "your data, your VM" required $300K of Snowflake/Datadog spend in 2022. In 2026 it's a docker compose file.
+
+Pre-2025, "your work, your data, your AI on one screen" required enterprise budget. In 2026 it requires a weekend. That's the window.
+
+## Founder Context
+
+KaryoSpace is built by Suman Akkisetty — 16 years inside Fortune 500 IT (Cognizant 2016–present, DXC 2010–2016), running 30+ person delivery programs and sitting in production war rooms watching teams switch between ServiceNow, Jira, Confluence, Outlook, Teams, and Excel to find out what is actually happening.
+
+The product is the answer to a lived complaint, not a market hypothesis. The Mode 2 wedge — "your AI knows ServiceNow without your team learning ServiceNow" — is the specific ask heard from VP Engineering buyers in actual customer calls over a decade. KaryoSpace exists because the person building it has been on the receiving end of the problem for sixteen years.
 
 ---
 
