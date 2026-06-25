@@ -202,17 +202,9 @@ The principle: every visible nav item should be instantly comprehensible to a ne
 
 ## Licensing Model
 
-Open core — not fully open source.
+Open core — not fully open source. Currently in beta and free to use. See [karyospace.com/info#pricing](https://karyospace.com/info#pricing) for current access details.
 
-| Tier | Hosting | Price | Features |
-|------|---------|-------|----------|
-| Community | Self-hosted | Free | All core modules. No SLA. |
-| Business | Cloud SaaS | $8–12/user/month | All modules + integrations. SSO. Support SLA. |
-| Enterprise | On-prem or dedicated | Custom | ServiceNow, custom integrations, compliance docs, dedicated support. |
-
-Premium-only (closed source): SSO/SAML, ServiceNow integration, advanced audit export, SLA support.
-
-**Currently in beta: free and open to all.** See [karyospace.com/info#pricing](https://karyospace.com/info#pricing).
+The planned model is tiered: self-hosted community access, cloud SaaS for teams that don't want to manage infrastructure, and an enterprise tier with ServiceNow integration, compliance docs, and dedicated support. Pricing will be announced when beta ends.
 
 Public showcase source is available under the [Elastic License 2.0](LICENSE) — read, run, and modify freely; may not be offered as a hosted service to third parties.
 
